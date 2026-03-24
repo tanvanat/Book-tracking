@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthUser {
   final String id;
@@ -23,9 +23,8 @@ class AuthService extends ChangeNotifier {
   factory AuthService() => _instance;
   AuthService._internal();
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: ['email', 'profile'],
-  );
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
   AuthUser? _currentUser;
   bool _isLoading = false;
@@ -34,51 +33,71 @@ class AuthService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _currentUser != null;
 
-  // Initialize – check if user already logged in
   Future<void> initialize() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString('user_id');
-    if (userId != null) {
-      _currentUser = AuthUser(
-        id: userId,
-        name: prefs.getString('user_name') ?? '',
-        email: prefs.getString('user_email') ?? '',
-        photoUrl: prefs.getString('user_photo'),
-        isGoogleUser: prefs.getBool('is_google_user') ?? false,
-      );
+    // Initialize GoogleSignIn (required for v7.x)
+    await _googleSignIn.initialize();
+
+    // Check existing Firebase session
+    final firebaseUser = _auth.currentUser;
+    if (firebaseUser != null) {
+      _currentUser = _fromFirebaseUser(firebaseUser);
       notifyListeners();
     }
+
+    // Listen to auth state changes
+    _auth.authStateChanges().listen((User? user) {
+      _currentUser = user != null ? _fromFirebaseUser(user) : null;
+      notifyListeners();
+    });
   }
 
-  // Google Sign In
+  AuthUser _fromFirebaseUser(User user) {
+    return AuthUser(
+      id: user.uid,
+      name: user.displayName ?? user.email?.split('@')[0] ?? 'Reader',
+      email: user.email ?? '',
+      photoUrl: user.photoURL,
+      isGoogleUser:
+          user.providerData.any((p) => p.providerId == 'google.com'),
+    );
+  }
+
+  // Google Sign In — google_sign_in v7.x API
   Future<String?> signInWithGoogle() async {
     try {
       _isLoading = true;
       notifyListeners();
 
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        _isLoading = false;
-        notifyListeners();
-        return 'cancelled';
-      }
+      // v7.x: use authenticate() instead of signIn()
+      final GoogleSignInAccount googleUser =
+          await _googleSignIn.authenticate();
 
-      _currentUser = AuthUser(
-        id: googleUser.id,
-        name: googleUser.displayName ?? 'Reader',
-        email: googleUser.email,
-        photoUrl: googleUser.photoUrl,
-        isGoogleUser: true,
+      // Get ID token from authentication
+      final String? idToken = googleUser.authentication.idToken;
+
+      // Get access token via authorization
+      final clientAuth = await googleUser.authorizationClient
+          .authorizeScopes(['email', 'profile']);
+
+      final credential = GoogleAuthProvider.credential(
+        idToken: idToken,
+        accessToken: clientAuth.accessToken,
       );
 
-      await _saveUser();
+      await _auth.signInWithCredential(credential);
+
       _isLoading = false;
       notifyListeners();
       return null; // success
     } catch (e) {
       _isLoading = false;
       notifyListeners();
-      return e.toString();
+      final msg = e.toString();
+      if (msg.contains('cancel') || msg.contains('sign_in_canceled') ||
+          msg.contains('canceled')) {
+        return 'cancelled';
+      }
+      return msg;
     }
   }
 
@@ -88,43 +107,18 @@ class AuthService extends ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
-      // Simulate a small delay
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      final prefs = await SharedPreferences.getInstance();
-      final storedEmail = prefs.getString('registered_email');
-      final storedPassword = prefs.getString('registered_password');
-      final storedName = prefs.getString('registered_name');
-
-      if (storedEmail == null) {
-        _isLoading = false;
-        notifyListeners();
-        return 'ยังไม่มีบัญชีผู้ใช้ กรุณาสมัครสมาชิกก่อน';
-      }
-
-      if (storedEmail != email) {
-        _isLoading = false;
-        notifyListeners();
-        return 'ไม่พบอีเมลนี้ในระบบ';
-      }
-
-      if (storedPassword != password) {
-        _isLoading = false;
-        notifyListeners();
-        return 'รหัสผ่านไม่ถูกต้อง';
-      }
-
-      _currentUser = AuthUser(
-        id: email,
-        name: storedName ?? email.split('@')[0],
+      await _auth.signInWithEmailAndPassword(
         email: email,
-        isGoogleUser: false,
+        password: password,
       );
 
-      await _saveUser();
       _isLoading = false;
       notifyListeners();
-      return null; // success
+      return null;
+    } on FirebaseAuthException catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      return _authErrorMessage(e.code);
     } catch (e) {
       _isLoading = false;
       notifyListeners();
@@ -142,32 +136,21 @@ class AuthService extends ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      final prefs = await SharedPreferences.getInstance();
-      final existing = prefs.getString('registered_email');
-
-      if (existing == email) {
-        _isLoading = false;
-        notifyListeners();
-        return 'อีเมลนี้ถูกใช้งานแล้ว';
-      }
-
-      await prefs.setString('registered_name', name);
-      await prefs.setString('registered_email', email);
-      await prefs.setString('registered_password', password);
-
-      _currentUser = AuthUser(
-        id: email,
-        name: name,
+      final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
-        isGoogleUser: false,
+        password: password,
       );
 
-      await _saveUser();
+      await userCredential.user?.updateDisplayName(name);
+      await userCredential.user?.reload();
+
       _isLoading = false;
       notifyListeners();
-      return null; // success
+      return null;
+    } on FirebaseAuthException catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      return _authErrorMessage(e.code);
     } catch (e) {
       _isLoading = false;
       notifyListeners();
@@ -176,28 +159,30 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    if (_currentUser?.isGoogleUser == true) {
+    await _auth.signOut();
+    try {
       await _googleSignIn.signOut();
-    }
+    } catch (_) {}
     _currentUser = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('user_id');
-    await prefs.remove('user_name');
-    await prefs.remove('user_email');
-    await prefs.remove('user_photo');
-    await prefs.remove('is_google_user');
     notifyListeners();
   }
 
-  Future<void> _saveUser() async {
-    if (_currentUser == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user_id', _currentUser!.id);
-    await prefs.setString('user_name', _currentUser!.name);
-    await prefs.setString('user_email', _currentUser!.email);
-    if (_currentUser!.photoUrl != null) {
-      await prefs.setString('user_photo', _currentUser!.photoUrl!);
+  String _authErrorMessage(String code) {
+    switch (code) {
+      case 'user-not-found':
+        return 'ไม่พบอีเมลนี้ในระบบ';
+      case 'wrong-password':
+        return 'รหัสผ่านไม่ถูกต้อง';
+      case 'email-already-in-use':
+        return 'อีเมลนี้ถูกใช้งานแล้ว';
+      case 'weak-password':
+        return 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร';
+      case 'invalid-email':
+        return 'รูปแบบอีเมลไม่ถูกต้อง';
+      case 'too-many-requests':
+        return 'ลองใหม่อีกครั้งในภายหลัง';
+      default:
+        return 'เกิดข้อผิดพลาด: $code';
     }
-    await prefs.setBool('is_google_user', _currentUser!.isGoogleUser);
   }
 }

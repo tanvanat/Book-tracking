@@ -3,9 +3,71 @@ import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import 'landing_screen.dart';
+import 'library_screen.dart';
+import 'reading_list_screen.dart';
+import 'stats_screen.dart';
+import 'reviews_screen.dart';
+import 'calendar_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _selectedIndex = 0;
+
+  final List<Widget> _screens = const [
+    _HomeTab(),
+    ReadingListScreen(),
+    LibraryScreen(),
+    ReviewsScreen(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: _screens[_selectedIndex],
+      bottomNavigationBar: NavigationBar(
+        backgroundColor: Colors.white,
+        indicatorColor: AppColors.primary.withOpacity(0.15),
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) =>
+            setState(() => _selectedIndex = index),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded, color: AppColors.primary),
+            label: 'หน้าหลัก',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.bookmark_outline_rounded),
+            selectedIcon:
+                Icon(Icons.bookmark_rounded, color: AppColors.primary),
+            label: 'อยากอ่าน',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.library_books_outlined),
+            selectedIcon:
+                Icon(Icons.library_books_rounded, color: AppColors.primary),
+            label: 'ชั้นหนังสือ',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.star_outline_rounded),
+            selectedIcon: Icon(Icons.star_rounded, color: AppColors.primary),
+            label: 'รีวิว',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeTab extends StatelessWidget {
+  const _HomeTab();
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +99,8 @@ class HomeScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout_rounded, color: AppColors.textSecondary),
+            icon: const Icon(Icons.logout_rounded,
+                color: AppColors.textSecondary),
             onPressed: () async {
               await context.read<AuthService>().signOut();
               if (context.mounted) {
@@ -85,10 +148,7 @@ class HomeScreen extends StatelessWidget {
                   const SizedBox(height: 6),
                   const Text(
                     'วันนี้คุณอ่านหนังสือไปแล้วกี่หน้า?',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
                   ),
                 ],
               ),
@@ -96,9 +156,23 @@ class HomeScreen extends StatelessWidget {
 
             const SizedBox(height: 28),
 
-            // Coming Soon sections
+            // Quick stats row
+            Row(
+              children: [
+                _statCard(context, '0', 'กำลังอ่าน', Icons.menu_book_rounded),
+                const SizedBox(width: 12),
+                _statCard(context, '0', 'อ่านแล้ว', Icons.check_circle_rounded),
+                const SizedBox(width: 12),
+                _statCard(
+                    context, '0', 'อยากอ่าน', Icons.bookmark_rounded),
+              ],
+            ),
+
+            const SizedBox(height: 28),
+
+            // Quick access section
             const Text(
-              'ฟีเจอร์กำลังมา...',
+              'เมนูหลัก',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -107,112 +181,154 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            _comingSoonCard(
-                Icons.library_books_rounded, 'My Library', 'จัดการคอลเลคชันหนังสือ'),
-            _comingSoonCard(
-                Icons.bookmark_add_rounded, 'Reading List', 'หนังสือที่อยากอ่าน'),
-            _comingSoonCard(
-                Icons.bar_chart_rounded, 'สถิติการอ่าน', 'ติดตามความก้าวหน้า'),
-            _comingSoonCard(
-                Icons.star_rounded, 'รีวิว & Rating', 'แชร์ความคิดเห็น'),
+            _menuCard(
+              context,
+              Icons.library_books_rounded,
+              'My Library',
+              'จัดการคอลเลคชันหนังสือของคุณ',
+              () => _navigateTo(context, 2),
+            ),
+            _menuCard(
+              context,
+              Icons.bookmark_add_rounded,
+              'Reading List',
+              'หนังสือที่อยากอ่านในอนาคต',
+              () => _navigateTo(context, 1),
+            ),
+            _menuCard(
+              context,
+              Icons.bar_chart_rounded,
+              'สถิติการอ่าน',
+              'ติดตามความก้าวหน้าของคุณ',
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const StatsScreen()),
+              ),
+            ),
+            _menuCard(
+              context,
+              Icons.star_rounded,
+              'รีวิว & Rating',
+              'แชร์ความคิดเห็นเกี่ยวกับหนังสือ',
+              () => _navigateTo(context, 3),
+            ),
+            _menuCard(
+              context,
+              Icons.calendar_month_rounded,
+              'Reading Calendar',
+              'บันทึกว่าแต่ละวันคุณอ่านอะไร',
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CalendarScreen()),
+              ),
+            )
           ],
         ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        backgroundColor: Colors.white,
-        indicatorColor: AppColors.primary.withOpacity(0.15),
-        selectedIndex: 0,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded, color: AppColors.primary),
-            label: 'หน้าหลัก',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.search_outlined),
-            selectedIcon: Icon(Icons.search_rounded, color: AppColors.primary),
-            label: 'ค้นหา',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.library_books_outlined),
-            selectedIcon: Icon(Icons.library_books_rounded, color: AppColors.primary),
-            label: 'ชั้นหนังสือ',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            selectedIcon:
-                Icon(Icons.person_rounded, color: AppColors.primary),
-            label: 'โปรไฟล์',
-          ),
-        ],
       ),
     );
   }
 
-  Widget _comingSoonCard(IconData icon, String title, String subtitle) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(14),
+  void _navigateTo(BuildContext context, int index) {
+    final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+    homeState?.setState(() => homeState._selectedIndex = index);
+  }
+
+  Widget _statCard(
+      BuildContext context, String value, String label, IconData icon) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-            child: Icon(icon, color: AppColors.primary, size: 24),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.accent.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'เร็วๆ นี้',
-              style: TextStyle(
-                fontSize: 11,
-                color: AppColors.primaryDark,
-                fontWeight: FontWeight.w600,
+          ],
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: AppColors.primary, size: 22),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(
+                  fontSize: 10, color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _menuCard(BuildContext context, IconData icon, String title,
+      String subtitle, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: AppColors.primary, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.textSecondary),
+          ],
+        ),
       ),
     );
   }
